@@ -4,10 +4,60 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
+#ifdef _WIN32
+// windows
+#else
+// posix
+//#include <unistd.h>
+#endif
+
+#ifdef _WIN32
+/* Simple POSIX-like getline replacement for Windows */
+ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
+	if (!lineptr || !n || !stream) return -1;
+
+	if (*lineptr == NULL || *n == 0) {
+		*n = 128;
+		*lineptr = malloc(*n);
+		if (!*lineptr) return -1;
+	}
+
+	size_t pos = 0;
+
+	for (;;) {
+		int c = fgetc(stream);
+
+		if (c == EOF) {
+			if (pos == 0) return -1;
+			break;
+		}
+
+		if (pos + 1 >= *n) {
+			size_t new_size = (*n) * 2;
+			char *new_ptr = realloc(*lineptr, new_size);
+			if (!new_ptr) return -1;
+
+			*lineptr = new_ptr;
+			*n = new_size;
+		}
+
+		(*lineptr)[pos++] = (char)c;
+
+		if (c == '\n')
+			break;
+	}
+
+	(*lineptr)[pos] = '\0';
+	return (ssize_t)pos;
+}
+#endif
 
 int g_argc;
 char** g_args;
 bool verbose=0;
+
+#define VERSION "1.0.1"
 
 // Basic colored logging macros
 #define LOG_ERROR(msg, ...)   fprintf(stderr, "\x1b[31m[ERROR]\x1b[0m " msg "\n", ##__VA_ARGS__)    // Red
@@ -263,6 +313,10 @@ void print_usage() {
 	printf("    sort the data read from the input file to ensure indexes are cronological\n");
 	printf("    this would only need to be done if a file is not conformed to the SRT standard\n");
 	printf("\n");
+	printf("UTILS:\n");
+	printf(" --backup\n");
+	printf("    creates a backup in the temp folder\n");
+	printf("\n");
 	printf("Accepted data types:\n");
 	printf(" <time>:\n");
 	printf("   X.Xs - seconds (float)\n");
@@ -293,7 +347,7 @@ void print_examples() {
 void print_version() {
 	print_header();
 	printf("\n");
-	printf("Version 1.0.0\n");
+	printf("Version "VERSION"\n");
 }
 
 bool ask_confirm(char* prompt, bool defaultToNone, bool defaultToInvalid) {
@@ -523,6 +577,44 @@ void sub_delete_range(sub_line* list, unsigned int* count, unsigned int aFrom, u
     *count -= deleteCount;
 }
 
+#ifndef _WIN32
+void create_backup(const char* fn_in) {
+    time_t now = time(NULL);
+    struct tm* tm_info = localtime(&now);
+
+    char timestamp[32];
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
+
+    char backup_path[512];
+    snprintf(backup_path, sizeof(backup_path), "/tmp/srt_%s.bak", timestamp);
+
+    FILE* src = fopen(fn_in, "rb");
+    if (!src) {
+        LOG_ERROR("Failed to open source file for backup.");
+        return;
+    }
+
+    FILE* dst = fopen(backup_path, "wb");
+    if (!dst) {
+        fclose(src);
+        LOG_ERROR("Failed to create backup file.");
+        return;
+    }
+
+    char buffer[8192];
+    size_t n;
+    while ((n = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        fwrite(buffer, 1, n, dst);
+    }
+
+    fclose(src);
+    fclose(dst);
+
+    LOG_STATUS("Backup created: %s", backup_path);
+}
+#endif
+
+
 // MAIN
 int main(int argc, char** argv) {
 	g_argc = argc;
@@ -554,6 +646,8 @@ int main(int argc, char** argv) {
 	    
 	    "--no-rebuild-index",
 	    "--fix-order",
+	    
+	    "--backup",
 
 	    "-h",
 	    "-v",
@@ -589,6 +683,7 @@ int main(int argc, char** argv) {
 	bool optionYesDefault =  param_exists("--yes") || param_exists("-y");
 	bool optionNoRebuildIndex =  param_exists("--no-rebuild-index") || param_exists("-nix");
 	bool optionFixOrder =  param_exists("--fix-order");
+	bool optionBackup =  param_exists("--backup");
 	verbose = param_exists("--verbose");
 
 	// Information operation mode
@@ -919,6 +1014,16 @@ int main(int argc, char** argv) {
 	if (!optionNoRebuildIndex)
 		for (uint32_t i=0; i<data_count; i++)
 			data[i].index = i+1;
+
+	// Backup
+	if (optionBackup) {
+		#ifdef _WIN32
+		LOG_ERROR("Backup not supported on Windows.")
+		#else
+		LOG_STATUS("Creating backup...");
+		create_backup(fn_in);
+		#endif
+	}
 
 	// OUT
 	FILE* f_out;
