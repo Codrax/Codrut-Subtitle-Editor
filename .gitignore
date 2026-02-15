@@ -1,4 +1,7 @@
 # Prerequisites
+*.srt
+
+# Prerequisites
 *.d
 
 # Object files
