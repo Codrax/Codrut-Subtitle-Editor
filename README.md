@@ -65,6 +65,8 @@ srt-edit [options]
 | Output Options  | No Rebuild Index         | -nix, --no-rebuild-index       | Do not re-build subtitle indices after modification    |
 | Output Options  | Fix Order                | --fix-order                    | Sort data chronologically to conform to SRT standard   |
 
+---
+
 ## Examples
 `--verbose` is not required, I added it in the examples so you can see the inner-workings of the program in more detail.
 
@@ -101,7 +103,7 @@ When the end is not provided, the program will ask you if you'd like to select t
 ``` bash
 srt-edit --verbose -i movie.srt -o out.srt -olo --offset-from -2s   --offset-to 4s   --from-index 1   --to-index 500
 ```
-
+---
 
 ## Time Format Interpreter
 
